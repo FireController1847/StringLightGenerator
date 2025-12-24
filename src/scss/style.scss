@@ -5,7 +5,7 @@
 }
 
 body {
-    background-color: white;
+    background-color: #FFFEFA;
     display: flex;
     flex-direction: column;
     position: absolute;
@@ -14,4 +14,90 @@ body {
     bottom: 0;
     right: 0;
     overflow: hidden;
+}
+
+#options {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+}
+#options > .misc,
+#options > .numbers,
+#options > .colors {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 0.50em;
+}
+#options > .misc {
+    flex-direction: column;
+}
+#options > .misc > div,
+#options > .numbers > div,
+#options > .colors > div {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 0.25em;
+}
+#options > .misc > div {
+    flex-direction: row;
+}
+#options label {
+    margin: 0;
+}
+
+#lights {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.50em;
+    padding: 1em;
+}
+#lights img {
+    width: 1.25em;
+}
+#lights > .light {
+    position: relative;
+}
+#lights > .light > .glow {
+    position: absolute;
+    top: 35%;
+    left: 45%;
+    width: 1px;
+    height: 1px;
+    border-radius: 50%;
+    pointer-events: none;
+}
+#lights > .light > div.bulb {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    transform: rotateZ(17.5deg);
+}
+#lights > .light > div.bulb > div.bulb_tint {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    mask: url("resource/bulb.png") center/contain no-repeat;
+    opacity: 0.718;
+    mix-blend-mode: color-burn;
+}
+#lights > .light > img.base {
+    position: relative;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    transform: rotateZ(17.5deg);
 }
