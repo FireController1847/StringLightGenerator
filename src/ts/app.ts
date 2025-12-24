@@ -81,6 +81,10 @@ function generateLights() {
     let limited_weights = weights.slice(0, num_colors);
     let color_sequence = color.generateLightPattern(limited_colors, limited_weights, num_lights, 0);
 
+    // rotate color sequence to random start index
+    let start_index = Math.floor(Math.random() * num_lights);
+    color_sequence = color_sequence.slice(start_index).concat(color_sequence.slice(0, start_index));
+
     // DEBUG: count number of occurrences of each color in color_sequence
     let color_counts: { [key: string]: number } = {};
     for (let c of limited_colors) {
