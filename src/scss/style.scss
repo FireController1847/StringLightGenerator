@@ -66,6 +66,13 @@ body {
 #lights > .light {
     position: relative;
 }
+#lights > .light:hover {
+    cursor: pointer;
+}
+#lights > .light.clicked {
+    // crossed out effect
+    filter: grayscale(100%) brightness(50%);
+}
 #lights > .light > .glow {
     position: absolute;
     top: 35%;

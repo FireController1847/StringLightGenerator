@@ -27,6 +27,10 @@ let weights: number[] = [ 25, 20, 20, 20, 15 ];
 function generateLights_light($lights: JQuery<HTMLElement>, color: string, index: number) {
     const $light = $("<div>").attr("class", "light");
 
+    $light.on("click", () => {
+        $light.toggleClass("clicked");
+    });
+
     const $glow1 = $("<div>").attr("class", "glow glow1");
     $glow1.css("box-shadow", `0 0 2px 1px #fefff1ff`);
     $light.append($glow1);
