@@ -47,11 +47,11 @@ function generateLights_light($lights: JQuery<HTMLElement>, color: string, index
     const $div_bulb_tint = $("<div>").attr("class", "bulb_tint");
     $div_bulb_tint.css("background-color", color);
     $div_bulb.append($div_bulb_tint);
-    const $img_bulb = $("<img>").attr("class", "bulb_img").attr("src", "/resource/bulb.png").attr("alt", `Bulb ${index}`);
+    const $img_bulb = $("<img>").attr("class", "bulb_img").attr("src", "./resource/bulb.png").attr("alt", `Bulb ${index}`);
     $div_bulb.append($img_bulb);
     $light.append($div_bulb);
 
-    const $img_base = $("<img>").attr("class", "base").attr("src", "/resource/base.png").attr("alt", `Light ${index}`);
+    const $img_base = $("<img>").attr("class", "base").attr("src", "./resource/base.png").attr("alt", `Light ${index}`);
     $light.append($img_base);
 
     $lights.append($light);
@@ -417,8 +417,8 @@ function onWeightChanged(index: number, weight_value: number) {
 
 function main() {
     // Preload resources
-    (() => { const i = new Image(); i.src = "/resource/bulb.png"; })();
-    (() => { const i = new Image(); i.src = "/resource/base.png"; })();
+    (() => { const i = new Image(); i.src = "./resource/bulb.png"; })();
+    (() => { const i = new Image(); i.src = "./resource/base.png"; })();
 
     // Initialize app
     generateOptions();
