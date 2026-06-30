@@ -140,6 +140,11 @@ export function generateLightPattern(
     let configuredMinContrast: number = options?.minContrast ?? 0;
     let contrastBiasPower: number = options?.contrastBiasPower ?? 1.5;
     let configuredForbidABA: boolean = options?.forbidABA ?? true;
+    // Visual constraints are soft so imbalanced palettes can still hit their target counts.
+    let repeatPenalty: number = 1.25;
+    let abaPenalty: number = 1;
+    let adjacencyPenalty: number = 1.5;
+    let contrastPenalty: number = 1.5;
 
     let forbidAdjacency: ForbidAdjacencyFn | undefined = options?.forbidAdjacency;
     let afterBias: AfterBiasFn | undefined = options?.afterBias;
@@ -184,17 +189,20 @@ export function generateLightPattern(
     let sumWeights: number = 0;
     for (i = 0; i < n; i += 1) sumWeights += weights[i];
 
+    let effectiveWeights: number[] = new Array(n);
+    if (sumWeights <= 0) {
+        for (i = 0; i < n; i += 1) effectiveWeights[i] = 1;
+        sumWeights = n;
+    } else {
+        for (i = 0; i < n; i += 1) effectiveWeights[i] = weights[i];
+    }
+
     let remaining: number[] = new Array(n);
     let target: number[] = new Array(n);
 
-    if (sumWeights <= 0) {
-        for (i = 0; i < n; i += 1) {
-            remaining[i] = 0;
-            target[i] = 0;
-        }
-    } else {
+    {
         let raw: number[] = new Array(n);
-        for (i = 0; i < n; i += 1) raw[i] = (weights[i] / sumWeights) * num_lights;
+        for (i = 0; i < n; i += 1) raw[i] = (effectiveWeights[i] / sumWeights) * num_lights;
 
         let total: number = 0;
         for (i = 0; i < n; i += 1) {
@@ -223,106 +231,113 @@ export function generateLightPattern(
         for (i = 0; i < n; i += 1) remaining[i] = target[i];
     }
 
-    let sumRemaining: number = 0;
-    for (i = 0; i < n; i += 1) sumRemaining += remaining[i];
-
     let used: number[] = new Array(n);
     for (i = 0; i < n; i += 1) used[i] = 0;
 
-    function pickDeterministic(candidates: number[], candidateWeights: number[]): number {
+    function pickDeterministic(candidates: number[], candidateScores: number[], candidateWeights: number[]): number {
         let bestIndex: number = candidates[0];
+        let bestScore: number = candidateScores[0];
         let bestWeight: number = candidateWeights[0];
         let j: number = 0;
 
         for (j = 1; j < candidates.length; j += 1) {
             let ci: number = candidates[j];
+            let cs: number = candidateScores[j];
             let cw: number = candidateWeights[j];
-            if (cw > bestWeight) {
+            if (cs > bestScore) {
+                bestScore = cs;
                 bestWeight = cw;
                 bestIndex = ci;
-            } else if (cw === bestWeight) {
-                if (rotatedOrderIndex(ci) < rotatedOrderIndex(bestIndex)) bestIndex = ci;
+            } else if (cs === bestScore) {
+                if (cw > bestWeight) {
+                    bestWeight = cw;
+                    bestIndex = ci;
+                } else if (cw === bestWeight) {
+                    if (rotatedOrderIndex(ci) < rotatedOrderIndex(bestIndex)) bestIndex = ci;
+                }
             }
         }
         return bestIndex;
     }
 
-    function pickWeighted(candidates: number[], candidateWeights: number[]): number {
+    function pickWeighted(candidates: number[], candidateScores: number[], candidateWeights: number[]): number {
         let total: number = 0;
         let j: number = 0;
+        let maxScore: number = candidateScores[0];
 
-        for (j = 0; j < candidateWeights.length; j += 1) total += candidateWeights[j];
-        if (total <= 0) return pickDeterministic(candidates, candidateWeights);
+        for (j = 1; j < candidateScores.length; j += 1) {
+            if (candidateScores[j] > maxScore) maxScore = candidateScores[j];
+        }
+
+        let selectionWeights: number[] = new Array(candidateWeights.length);
+        for (j = 0; j < candidateWeights.length; j += 1) {
+            let selectionWeight: number = Math.exp(candidateScores[j] - maxScore) * candidateWeights[j];
+            if (!Number.isFinite(selectionWeight) || selectionWeight < 0) selectionWeight = 0;
+            selectionWeights[j] = selectionWeight;
+            total += selectionWeight;
+        }
+
+        if (total <= 0) return pickDeterministic(candidates, candidateScores, candidateWeights);
 
         let r: number = (rng ? rng() : 0) * total;
         let acc: number = 0;
 
         for (j = 0; j < candidates.length; j += 1) {
-            acc += candidateWeights[j];
+            acc += selectionWeights[j];
             if (r < acc) return candidates[j];
         }
         return candidates[candidates.length - 1];
     }
 
-    function evennessMultiplier(colorIndex: number, stepIndex: number): number {
-        if (!evenDistribution) return 1;
-
+    function distributionScore(colorIndex: number, stepIndex: number): number {
         let t: number = target[colorIndex];
-        if (t <= 0) return 1;
+        if (t <= 0) return Number.NEGATIVE_INFINITY;
+        if (!evenDistribution) return remaining[colorIndex];
 
-        // expected used by now (inclusive-ish), scaled across the string
+        // Positive means this color is behind its ideal pace at this position.
         let progress: number = (stepIndex + 1) / num_lights;
         let expected: number = t * progress;
-        let behind: number = expected - used[colorIndex];
-
-        // exponential makes “behind” matter early, preventing end-clumping
-        return Math.exp(behind * evennessStrength);
+        return (expected - used[colorIndex]) * evennessStrength;
     }
 
     function buildCandidates(
         prev: string | null,
         prev2: string | null,
-        stepIndex: number,
-        minContrast: number,
-        forbidABA: boolean,
-        applyAdjacencyRules: boolean,
-        useRemainingCounts: boolean
-    ): { indices: number[]; weights: number[] } {
+        stepIndex: number
+    ): { indices: number[]; scores: number[]; weights: number[] } {
         let indices: number[] = [];
+        let candidateScores: number[] = [];
         let candidateWeights: number[] = [];
         let j: number = 0;
 
         for (j = 0; j < n; j += 1) {
+            if (remaining[j] <= 0) continue;
+
             let next: string = colors[j];
+            let score: number = distributionScore(j, stepIndex);
+            let base: number = remaining[j];
 
-            if (prev !== null && next === prev) continue;
-            if (forbidABA && prev2 !== null && next === prev2) continue;
-            if (applyAdjacencyRules && forbidAdjacency && forbidAdjacency(prev, next)) continue;
-            if (useRemainingCounts && sumRemaining > 0 && remaining[j] <= 0) continue;
-
-            let base: number = 1;
-
-            if (useRemainingCounts && sumRemaining > 0) base = remaining[j];
-            else if (sumWeights > 0) base = weights[j];
-            else base = 1;
+            if (prev !== null && next === prev) score -= repeatPenalty;
+            if (configuredForbidABA && prev2 !== null && next === prev2) score -= abaPenalty;
+            if (forbidAdjacency && forbidAdjacency(prev, next)) score -= adjacencyPenalty;
 
             if (prev !== null) {
                 let cr: number = contrastRatio(prev, next);
-                if (cr < minContrast) continue;
+                if (cr < configuredMinContrast) score -= contrastPenalty + (configuredMinContrast - cr);
                 base *= Math.pow(cr, contrastBiasPower);
             }
-
-            base *= evennessMultiplier(j, stepIndex);
 
             if (afterBias) {
                 base = afterBias(prev, next, base);
             }
+            if (!Number.isFinite(base) || base < 0) base = 0;
 
             indices.push(j);
+            candidateScores.push(score);
             candidateWeights.push(base);
         }
 
-        return { indices: indices, weights: candidateWeights };
+        return { indices: indices, scores: candidateScores, weights: candidateWeights };
     }
 
     let output: string[] = [];
@@ -331,13 +346,9 @@ export function generateLightPattern(
 
     let k: number = 0;
     for (k = 0; k < num_lights; k += 1) {
-        let pack: { indices: number[]; weights: number[] };
+        let pack: { indices: number[]; scores: number[]; weights: number[] };
 
-        pack = buildCandidates(prev, prev2, k, configuredMinContrast, configuredForbidABA, true, true);
-        if (pack.indices.length === 0) pack = buildCandidates(prev, prev2, k, 0, configuredForbidABA, true, true);
-        if (pack.indices.length === 0) pack = buildCandidates(prev, prev2, k, 0, false, true, true);
-        if (pack.indices.length === 0) pack = buildCandidates(prev, prev2, k, 0, false, false, true);
-        if (pack.indices.length === 0) pack = buildCandidates(prev, prev2, k, 0, false, false, false);
+        pack = buildCandidates(prev, prev2, k);
 
         if (pack.indices.length === 0) {
             if (n === 1) {
@@ -365,17 +376,13 @@ export function generateLightPattern(
             continue;
         }
 
-        let nextIndex: number = rng ? pickWeighted(pack.indices, pack.weights) : pickDeterministic(pack.indices, pack.weights);
+        let nextIndex: number = rng ? pickWeighted(pack.indices, pack.scores, pack.weights) : pickDeterministic(pack.indices, pack.scores, pack.weights);
         let nextColor: string = colors[nextIndex];
 
         output.push(nextColor);
 
         used[nextIndex] += 1;
-
-        if (sumRemaining > 0 && remaining[nextIndex] > 0) {
-            remaining[nextIndex] -= 1;
-            sumRemaining -= 1;
-        }
+        remaining[nextIndex] -= 1;
 
         prev2 = prev;
         prev = nextColor;
